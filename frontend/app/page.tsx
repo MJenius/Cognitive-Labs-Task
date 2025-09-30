@@ -9,9 +9,17 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:800
 const ALL_MODELS = ["surya", "docling", "mineru"] as const;
 type ModelKey = typeof ALL_MODELS[number];
 
+interface ModelMeta {
+  time_ms: number;
+  block_count: number;
+  ocr_box_count: number;
+  char_count: number;
+}
+
 interface ModelOutput {
   text_markdown: string;
   annotated_images: string[]; // data URLs
+  meta?: ModelMeta;
 }
 
 interface ExtractResponse {
@@ -231,7 +239,12 @@ function DualPane({ model, data }: { model: ModelKey; data: ModelOutput }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-2">
-        <h3 className="px-2 py-1 text-sm font-semibold capitalize text-gray-300">{model} • Annotated PDF</h3>
+        <div className="flex items-center justify-between px-2 py-1">
+          <h3 className="text-sm font-semibold capitalize text-gray-300">{model} • Annotated PDF</h3>
+          {data.meta && (
+            <div className="text-xs text-gray-400">{data.meta.time_ms.toFixed(0)} ms • blocks {data.meta.block_count}</div>
+          )}
+        </div>
         <div className="max-h-[70vh] overflow-auto">
           {data.annotated_images.map((src, idx) => (
             <img key={idx} src={src} alt={`Page ${idx + 1}`} className="mx-auto mb-2 w-full max-w-3xl" />
@@ -239,7 +252,31 @@ function DualPane({ model, data }: { model: ModelKey; data: ModelOutput }) {
         </div>
       </div>
       <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-2">
-        <h3 className="px-2 py-1 text-sm font-semibold capitalize text-gray-300">{model} • Extracted Markdown</h3>
+        <div className="flex items-center justify-between px-2 py-1">
+          <h3 className="text-sm font-semibold capitalize text-gray-300">{model} • Extracted Markdown</h3>
+          <div className="flex items-center gap-2">
+            <button
+              className="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-200 hover:bg-gray-700"
+              onClick={() => navigator.clipboard.writeText(data.text_markdown || "")}
+            >
+              Copy
+            </button>
+            <button
+              className="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-200 hover:bg-gray-700"
+              onClick={() => {
+                const blob = new Blob([data.text_markdown || ""], { type: "text/markdown;charset=utf-8" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `${model}.md`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              Download
+            </button>
+          </div>
+        </div>
         <div className="prose prose-invert max-h-[70vh] overflow-auto px-2">
           <ReactMarkdown>{data.text_markdown || "(no text)"}</ReactMarkdown>
         </div>
@@ -253,7 +290,12 @@ function ComparisonGrid({ selected, data }: { selected: ModelKey[]; data: Record
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {selected.map((m) => (
         <div key={m} className="rounded-lg border border-gray-800 bg-gray-900/50 p-2">
-          <h3 className="px-2 py-1 text-sm font-semibold capitalize text-gray-300">{m}</h3>
+          <div className="flex items-center justify-between px-2 py-1">
+            <h3 className="text-sm font-semibold capitalize text-gray-300">{m}</h3>
+            {data[m]?.meta && (
+              <div className="text-xs text-gray-400">{data[m]?.meta?.time_ms?.toFixed(0)} ms • blocks {data[m]?.meta?.block_count}</div>
+            )}
+          </div>
           <div className="max-h-[60vh] overflow-auto">
             {data[m]?.annotated_images?.map((src, idx) => (
               <img key={idx} src={src} alt={`${m} page ${idx + 1}`} className="mx-auto mb-2 w-full max-w-3xl" />
@@ -261,6 +303,28 @@ function ComparisonGrid({ selected, data }: { selected: ModelKey[]; data: Record
           </div>
           <div className="prose prose-invert max-h-[40vh] overflow-auto px-2">
             <ReactMarkdown>{data[m]?.text_markdown || "(no text)"}</ReactMarkdown>
+            <div className="mt-2 flex gap-2">
+              <button
+                className="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-200 hover:bg-gray-700"
+                onClick={() => navigator.clipboard.writeText(data[m]?.text_markdown || "")}
+              >
+                Copy
+              </button>
+              <button
+                className="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-200 hover:bg-gray-700"
+                onClick={() => {
+                  const blob = new Blob([data[m]?.text_markdown || ""], { type: "text/markdown;charset=utf-8" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `${m}.md`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+              >
+                Download
+              </button>
+            </div>
           </div>
         </div>
       ))}
