@@ -7,7 +7,7 @@ import logging
 
 from ..schemas import ExtractResponse, ModelOutput, ModelMeta, ElementCounts
 from ..adapters import get_adapter, KNOWN_MODELS
-from ..utils.pdf import load_pdf_doc, render_page_image
+from ..utils.pdf import load_pdf_doc, render_page_image, have_fitz, fitz_import_error
 from ..utils.annotate import annotate_blocks
 
 logger = logging.getLogger(__name__)
@@ -55,6 +55,7 @@ async def extract(
         raise HTTPException(status_code=413, detail="File too large. Max 15MB.")
 
     doc = load_pdf_doc(pdf_bytes)
+    fitz_ok = have_fitz()
     total_pages = len(doc)
     pages_to_process = total_pages
 
@@ -67,7 +68,7 @@ async def extract(
     for model_name in selection:
         adapter = get_adapter(model_name)
         start = time.perf_counter()
-        text_md, blocks_by_page = adapter.extract(doc, max_pages=pages_to_process)
+        text_md, blocks_by_page = adapter.extract(doc)
         elapsed_ms = (time.perf_counter() - start) * 1000.0
 
         annotated_images: List[str] = []
@@ -89,6 +90,10 @@ async def extract(
             b64 = base64.b64encode(buf.getvalue()).decode("ascii")
             annotated_images.append(f"data:image/png;base64,{b64}")
 
+        warn_confidence = None
+        if not fitz_ok:
+            # degrade confidence if running in fallback
+            warn_confidence = 0.2
         meta = ModelMeta(
             time_ms=round(elapsed_ms, 2),
             block_count=total_blocks,
@@ -96,7 +101,7 @@ async def extract(
             char_count=len(text_md or ""),
             word_count=len((text_md or "").split()),
             element_counts=ElementCounts(),
-            confidence=None,
+            confidence=warn_confidence,
         )
 
         outputs[model_name] = ModelOutput(
@@ -105,4 +110,8 @@ async def extract(
             meta=meta,
         )
 
+    if not fitz_ok:
+        # Attach a pseudo-model with diagnostic info maybe or include warning header
+        # Simpler: add a warning field via HTTP header? For now embed first model meta text preface.
+        pass
     return ExtractResponse(pages=pages_to_process, models=outputs)
