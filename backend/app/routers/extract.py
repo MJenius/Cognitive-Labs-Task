@@ -40,6 +40,8 @@ async def extract(
     request: Request,
     file: UploadFile = File(...),
     models: str = Form("surya,docling,mineru"),
+    page_start: int | None = Form(None),
+    page_end: int | None = Form(None),
 ):
     client_ip = request.client.host if request.client else "unknown"
     if not _allow_request(client_ip):
@@ -57,7 +59,16 @@ async def extract(
     doc = load_pdf_doc(pdf_bytes)
     fitz_ok = have_fitz()
     total_pages = len(doc)
-    pages_to_process = total_pages
+    # normalize range
+    if page_start is not None and page_start < 1:
+        page_start = 1
+    if page_end is not None and page_end > total_pages:
+        page_end = total_pages
+    if page_start is not None and page_end is not None and page_start > page_end:
+        raise HTTPException(status_code=400, detail="page_start cannot be greater than page_end")
+    start_idx = (page_start - 1) if page_start else 0
+    end_idx = (page_end - 1) if page_end else (total_pages - 1)
+    pages_to_process = (end_idx - start_idx + 1)
 
     selection = [m.strip().lower() for m in models.split(",") if m.strip()]
     if not selection:
@@ -74,7 +85,7 @@ async def extract(
         annotated_images: List[str] = []
         total_blocks = 0
         ocr_boxes = 0
-        for i in range(pages_to_process):
+        for i in range(start_idx, start_idx + pages_to_process):
             img = render_page_image(doc, i, dpi=144)
             page_rect = (doc[i].rect.width, doc[i].rect.height)
             page_blocks = blocks_by_page.get(i, [])

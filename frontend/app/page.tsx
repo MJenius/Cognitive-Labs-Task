@@ -46,6 +46,13 @@ interface FileState {
   status: 'pending' | 'uploading' | 'done' | 'error';
   result?: ExtractResponse | null;
   error?: string | null;
+  settings: {
+    selectedModels: ModelKey[];
+    primaryModel: ModelKey;
+    compare: boolean;
+    pageStart: string; // keep as string for input binding
+    pageEnd: string;
+  };
 }
 
 export default function HomePage() {
@@ -53,11 +60,17 @@ export default function HomePage() {
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setDragging] = useState(false);
-  const [selected, setSelected] = useState<ModelKey[]>([...ALL_MODELS]);
-  const [primary, setPrimary] = useState<ModelKey>("surya");
   const [loading, setLoading] = useState(false); // any file currently processing
   const [globalError, setGlobalError] = useState<string | null>(null);
-  const [compare, setCompare] = useState<boolean>(false);
+
+  // Helper to update settings of a specific (active) file
+  const updateFileSettings = (fileId: string, updater: (prev: FileState['settings']) => FileState['settings']) => {
+    setFiles(prev => prev.map(f => f.id === fileId ? { ...f, settings: updater(f.settings) } : f));
+  };
+
+  const activeFile = files.find(f => f.id === activeFileId) || files[0];
+  const activeResult = activeFile?.result || null;
+  const activeSettings = activeFile?.settings;
 
   const appendFiles = (fileList: FileList | null) => {
     if (!fileList) return;
@@ -66,7 +79,13 @@ export default function HomePage() {
       const isPdf = (f.type === 'application/pdf') || f.name.toLowerCase().endsWith('.pdf');
       if (!isPdf) return; // silently skip non-pdf
       const id = `${Date.now()}-${f.name}-${idx}-${Math.random().toString(36).slice(2,8)}`;
-      newStates.push({ id, file: f, status: 'pending', result: null, error: null });
+      newStates.push({ id, file: f, status: 'pending', result: null, error: null, settings: {
+        selectedModels: [...ALL_MODELS],
+        primaryModel: 'surya',
+        compare: false,
+        pageStart: '',
+        pageEnd: ''
+      } });
     });
     if (newStates.length) {
       setFiles(prev => [...prev, ...newStates]);
@@ -93,30 +112,64 @@ export default function HomePage() {
   }, [activeFileId]);
 
   const toggleModel = (m: ModelKey) => {
-    setSelected((prev) => {
-      const set = new Set(prev);
-      if (set.has(m)) set.delete(m);
-      else set.add(m);
-      const arr = Array.from(set) as ModelKey[];
-      if (!arr.includes(primary) && arr.length > 0) setPrimary(arr[0]);
-      return arr;
+    if (!activeFile) return;
+    updateFileSettings(activeFile.id, (prev) => {
+      const set = new Set(prev.selectedModels);
+      if (set.has(m)) set.delete(m); else set.add(m);
+      let arr = Array.from(set) as ModelKey[];
+      if (arr.length === 0) arr = []; // allow empty but will disable extract button
+      let primaryModel = prev.primaryModel;
+      if (!arr.includes(primaryModel) && arr.length > 0) primaryModel = arr[0];
+      return { ...prev, selectedModels: arr, primaryModel };
     });
   };
 
-  const submit = async () => {
+  const processSingleFile = async (fileId: string) => {
+    const fState = files.find(f => f.id === fileId);
+    if (!fState) return;
+    const { selectedModels, pageStart, pageEnd } = fState.settings;
+    if (!selectedModels.length) return;
+    setLoading(true);
+    setFiles(prev => prev.map(fs => fs.id === fileId ? { ...fs, status: 'uploading', error: null } : fs));
+    try {
+      const form = new FormData();
+      form.append('file', fState.file);
+      form.append('models', selectedModels.join(','));
+      const ps = parseInt(pageStart, 10);
+      const pe = parseInt(pageEnd, 10);
+      if (!isNaN(ps)) form.append('page_start', String(ps));
+      if (!isNaN(pe)) form.append('page_end', String(pe));
+      const res = await fetch(`${BACKEND_URL}/api/extract`, { method: 'POST', body: form });
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      const data: ExtractResponse = await res.json();
+      setFiles(prev => prev.map(fs => fs.id === fileId ? { ...fs, status: 'done', result: data } : fs));
+      if (!activeFileId) setActiveFileId(fState.id);
+    } catch (err: any) {
+      const msg = err?.message || 'Upload failed';
+      setFiles(prev => prev.map(fs => fs.id === fileId ? { ...fs, status: 'error', error: msg } : fs));
+      setGlobalError(msg);
+    }
+    setLoading(false);
+  };
+
+  const extractAllPending = async () => {
     if (!files.length) return;
     setLoading(true);
     setGlobalError(null);
-    // process each file sequentially for simplicity
     for (let i = 0; i < files.length; i++) {
       const fState = files[i];
-      if (fState.status === 'uploading') continue; // skip already processing
-      // mark uploading
+      if (fState.status === 'uploading') continue;
+      const { selectedModels, pageStart, pageEnd } = fState.settings;
+      if (!selectedModels.length) continue; // skip if user deselected all
       setFiles(prev => prev.map(fs => fs.id === fState.id ? { ...fs, status: 'uploading', error: null } : fs));
       try {
         const form = new FormData();
         form.append('file', fState.file);
-        form.append('models', selected.join(','));
+        form.append('models', selectedModels.join(','));
+        const ps = parseInt(pageStart, 10);
+        const pe = parseInt(pageEnd, 10);
+        if (!isNaN(ps)) form.append('page_start', String(ps));
+        if (!isNaN(pe)) form.append('page_end', String(pe));
         const res = await fetch(`${BACKEND_URL}/api/extract`, { method: 'POST', body: form });
         if (!res.ok) throw new Error(`Request failed: ${res.status}`);
         const data: ExtractResponse = await res.json();
@@ -142,10 +195,11 @@ export default function HomePage() {
     }
   };
 
-  const activeFile = files.find(f => f.id === activeFileId) || files[0];
-  const activeResult = activeFile?.result || null;
-
-  const selectedModels = useMemo(() => selected.filter((m) => ALL_MODELS.includes(m)), [selected]);
+  const selectedModels = useMemo(() => activeSettings?.selectedModels || [], [activeSettings]);
+  const primaryModel = activeSettings?.primaryModel || 'surya';
+  const compare = activeSettings?.compare || false;
+  const pageStart = activeSettings?.pageStart || '';
+  const pageEnd = activeSettings?.pageEnd || '';
 
   return (
     <div className="flex min-h-screen flex-col lg:flex-row">
@@ -177,11 +231,11 @@ export default function HomePage() {
           <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Dashboard / Extraction</h1>
         </header>
 
-        <section className="grid gap-4 lg:grid-cols-2">
+  <section className="grid gap-4 lg:grid-cols-2 lg:min-h-[calc(100vh-7rem)]">
           {/* Left: Upload dropzone */}
           <div
             className={clsx(
-              "relative flex h-72 cursor-pointer items-center justify-center rounded-lg border border-dashed p-4 transition-colors",
+              "relative flex h-72 lg:h-full cursor-pointer items-center justify-center rounded-lg border border-dashed p-4 transition-colors",
               isDragging 
                 ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40" 
                 : "border-gray-300 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/50"
@@ -247,43 +301,28 @@ export default function HomePage() {
             <input id="file-input" ref={inputRef} type="file" multiple accept="application/pdf,.pdf" className="hidden" onChange={onSelectFile} />
           </div>
 
-          {/* Right: Empty state & controls */}
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/50">
-            {!activeResult ? (
-              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-                <div className="text-4xl">📄</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">{files.length ? 'Select extract to view or run extraction' : 'No files selected yet'}</div>
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                  <button
-                    className="rounded border border-gray-300 bg-gray-200 px-3 py-1.5 text-sm text-gray-800 hover:bg-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                    onClick={() => setCompare(false)}
-                  >
-                    Configure Processing Settings
-                  </button>
-                  <button
-                    className="rounded border border-gray-300 bg-gray-200 px-3 py-1.5 text-sm text-gray-800 hover:bg-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                    onClick={() => setCompare(true)}
-                  >
-                    Schema Editor
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-sm text-gray-700 dark:text-gray-300">Processed {activeResult.pages} page(s) • File: {activeFile?.file.name}</div>
-            )}
-
-            {/* Controls */}
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {/* Right: Controls & status panel */}
+          <div className="flex flex-col rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/50 lg:h-full">
+            <div className="sticky top-0 z-10 border-b border-gray-200/70 bg-gray-50/95 p-4 backdrop-blur dark:border-gray-800/70 dark:bg-gray-900/80">
+              <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <div className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Models</div>
+                <div className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center justify-between">Models
+                  {activeFile && activeFile.result && (
+                    <button
+                      onClick={() => processSingleFile(activeFile.id)}
+                      className="ml-2 rounded border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                      disabled={loading}
+                    >Re-Extract</button>
+                  )}
+                </div>
                 <div className="flex flex-col gap-1">
                   {ALL_MODELS.map((m) => (
                     <label key={m} className="flex items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
-                      <input 
-                        type="checkbox" 
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:focus:ring-blue-600" 
-                        checked={selectedModels.includes(m)} 
-                        onChange={() => toggleModel(m)} 
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:focus:ring-blue-600"
+                        checked={selectedModels.includes(m)}
+                        onChange={() => toggleModel(m)}
                       />
                       <span className="capitalize">{m}</span>
                     </label>
@@ -294,23 +333,83 @@ export default function HomePage() {
                 <div className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Options</div>
                 <label className="flex items-center gap-2 text-sm">
                   <span className="text-gray-800 dark:text-gray-200">Side-by-side comparison</span>
-                  <input 
-                    type="checkbox" 
-                    className="ml-auto h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:focus:ring-blue-600" 
-                    checked={compare} 
-                    onChange={(e) => setCompare(e.target.checked)} 
+                  <input
+                    type="checkbox"
+                    className="ml-auto h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:focus:ring-blue-600"
+                    checked={compare}
+                    onChange={(e) => activeFile && updateFileSettings(activeFile.id, prev => ({ ...prev, compare: e.target.checked }))}
                   />
                 </label>
-                <button
-                  className="mt-2 w-full rounded bg-blue-600 px-3 py-2 text-white transition-colors hover:bg-blue-500 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500"
-                  onClick={submit}
-                  disabled={files.length === 0 || selectedModels.length === 0 || loading}
-                >
-                  {loading ? 'Processing Files...' : `Extract (${files.filter(f=>f.status!== 'done').length || 'All Done'})`}
-                </button>
-                {globalError && <div className="mt-2 rounded bg-red-100 p-2 text-sm text-red-800 dark:bg-red-900/40 dark:text-red-300">{globalError}</div>}
-                {files.length > 0 && <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">{files.length} file(s) selected</div>}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Page From</label>
+                    <input
+                      type="number"
+                      min={1}
+                      className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                      value={pageStart}
+                      onChange={(e) => activeFile && updateFileSettings(activeFile.id, prev => ({ ...prev, pageStart: e.target.value }))}
+                      placeholder="1"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Page To</label>
+                    <input
+                      type="number"
+                      min={1}
+                      className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                      value={pageEnd}
+                      onChange={(e) => activeFile && updateFileSettings(activeFile.id, prev => ({ ...prev, pageEnd: e.target.value }))}
+                      placeholder="End"
+                    />
+                  </div>
+                </div>
+                <div className="pt-1">
+                  <div className="flex gap-2">
+                    <button
+                      className="flex-1 rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-500 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500"
+                      onClick={() => activeFile && processSingleFile(activeFile.id)}
+                      disabled={!activeFile || !selectedModels.length || loading}
+                    >
+                      {loading && activeFile?.status === 'uploading' ? 'Processing…' : 'Extract This File'}
+                    </button>
+                    <button
+                      className="flex-1 rounded bg-indigo-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:opacity-50 dark:bg-indigo-600 dark:hover:bg-indigo-500"
+                      onClick={extractAllPending}
+                      disabled={!files.length || loading}
+                    >
+                      {loading ? 'Batch…' : 'Extract All'}
+                    </button>
+                  </div>
+                </div>
+                {files.length > 0 && (
+                  <div className="mt-1 flex items-center justify-between text-[11px] text-gray-600 dark:text-gray-400">
+                    <span>{files.length} file(s)</span>
+                    <span>{files.filter(f => f.status === 'done').length} done</span>
+                  </div>
+                )}
               </div>
+              </div>
+            </div>
+            {globalError && <div className="m-4 rounded bg-red-100 p-2 text-sm text-red-800 dark:bg-red-900/40 dark:text-red-300">{globalError}</div>}
+            <div className="flex-1 overflow-auto p-4">
+              {!activeResult ? (
+                <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                  <div className="text-4xl">📄</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">{files.length ? 'Add files or click Extract to process.' : 'No files selected yet'}</div>
+                </div>
+              ) : (
+                <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+                  <div className="rounded border border-gray-200 bg-white p-3 text-xs shadow-sm dark:border-gray-700 dark:bg-gray-800/70">
+                    <div><strong className="font-semibold">File:</strong> {activeFile?.file.name}</div>
+                    <div><strong className="font-semibold">Pages:</strong> {activeResult.pages}</div>
+                    {(!isNaN(parseInt(pageStart)) || !isNaN(parseInt(pageEnd))) && (
+                      <div><strong className="font-semibold">Range:</strong> {pageStart || '1'} – {pageEnd || 'End'}</div>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Scroll down to view results below.</div>
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -319,7 +418,7 @@ export default function HomePage() {
         {activeResult && (
           <section className="mt-6 space-y-4">
             {!compare ? (
-              <DualPane model={primary} data={activeResult.models[primary]} />
+              <DualPane model={primaryModel as ModelKey} data={activeResult.models[primaryModel]} />
             ) : (
               <ComparisonGrid selected={selectedModels} data={activeResult.models} />
             )}
