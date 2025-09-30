@@ -10,7 +10,7 @@ export default function Sidebar({ currentFileName, uploadStatus }: SidebarProps)
   return (
     <aside className="hidden w-64 shrink-0 border-r border-gray-200 bg-gray-50/60 p-3 dark:border-gray-800 dark:bg-gray-900/60 lg:block">
       <div className="flex items-center gap-2 px-2 py-3 text-gray-800 dark:text-gray-200">
-        <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-600/20 text-blue-600 dark:text-blue-400">∿</div>
+        <img src="/logo.svg" alt="Logo" className="h-8 w-8 rounded" />
         <span className="font-semibold">Playground</span>
       </div>
 

@@ -28,7 +28,7 @@ export default function MobileSidebar({ currentFileName, uploadStatus }: MobileS
       }`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 px-2 py-3 text-gray-800 dark:text-gray-200">
-            <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-600/20 text-blue-600 dark:text-blue-400">∿</div>
+            <img src="/logo.svg" alt="Logo" className="h-8 w-8 rounded" />
             <span className="font-semibold">Playground</span>
           </div>
           <button

@@ -162,7 +162,10 @@ export default function HomePage() {
       {/* Mobile header with theme toggle */}
       <div className="border-b border-gray-200 bg-gray-50 p-4 pl-16 dark:border-gray-800 dark:bg-gray-900 lg:hidden lg:pl-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-200">PDF Extraction</h1>
+          <div className="flex items-center gap-2">
+            <img src="/logo.svg" alt="Logo" className="h-8 w-8" />
+            <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-200">PDF Extraction</h1>
+          </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
           </div>

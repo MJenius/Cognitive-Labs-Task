@@ -1,6 +1,11 @@
 export const metadata = {
   title: 'PDF Extraction Playground',
   description: 'Compare Surya, Docling, and MinerU on PDFs',
+  icons: {
+    icon: '/logo.svg',
+    shortcut: '/logo.svg',
+    apple: '/logo.svg'
+  }
 };
 
 import './globals.css';

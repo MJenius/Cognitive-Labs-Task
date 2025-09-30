@@ -1,0 +1,17 @@
+<svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="logoTitle">
+  <title id="logoTitle">PDF Extraction Logo</title>
+  <rect x="20" y="10" width="60" height="80" fill="#EAEAEA" rx="5" ry="5"/>
+  <path d="M 20 10 H 50 V 90 H 20 V 10" fill="#FF5733"/>
+  <path d="M 50 10 H 80 V 90 H 50 V 10" fill="#FFFFFF"/>
+  <!-- List lines on right side -->
+  <rect x="55" y="25" width="20" height="5" fill="#333333"/>
+  <rect x="55" y="35" width="15" height="5" fill="#333333"/>
+  <rect x="55" y="45" width="20" height="5" fill="#333333"/>
+  <rect x="55" y="55" width="18" height="5" fill="#333333"/>
+  <rect x="55" y="65" width="20" height="5" fill="#333333"/>
+  <rect x="55" y="75" width="15" height="5" fill="#333333"/>
+  <!-- PDF label -->
+  <text x="35" y="54" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" letter-spacing="0.5">PDF</text>
+  <rect x="20" y="10" width="60" height="80" fill="none" stroke="#BBBBBB" stroke-width="2" rx="5" ry="5"/>
+  <path d="M 65 10 L 80 25 L 80 10 Z" fill="#BBBBBB"/>
+</svg>
