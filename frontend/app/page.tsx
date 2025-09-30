@@ -94,7 +94,10 @@ export default function HomePage() {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar />
+      <Sidebar
+        currentFileName={file?.name ?? null}
+        uploadStatus={loading ? "uploading" : result ? "done" : file ? "selected" : error ? "error" : "idle"}
+      />
       <main className="flex-1 p-4">
         <header className="mb-4 border-b border-gray-800 pb-3">
           <h1 className="text-lg font-semibold text-gray-200">Dashboard / Extraction</h1>
@@ -104,7 +107,7 @@ export default function HomePage() {
           {/* Left: Upload dropzone */}
           <div
             className={clsx(
-              "relative flex h-72 cursor-pointer items-center justify-center rounded-lg border border-dashed",
+              "relative flex h-72 cursor-pointer items-center justify-center rounded-lg border border-dashed p-4",
               isDragging ? "border-blue-500 bg-blue-950/40" : "border-gray-700 bg-gray-900/50"
             )}
             onDragOver={(e) => {
@@ -118,10 +121,23 @@ export default function HomePage() {
             onDrop={onDrop}
             onClick={() => document.getElementById("file-input")?.click()}
           >
-            <div className="text-center">
+            <div className="w-full text-center">
               <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-gray-800/80 text-gray-300">⬆</div>
-              <p className="font-medium text-gray-200">Drag and drop files here, or click to upload</p>
-              <p className="text-xs text-gray-400">Allowed files: PDF</p>
+              {!file ? (
+                <>
+                  <p className="font-medium text-gray-200">Drag and drop files here, or click to upload</p>
+                  <p className="text-xs text-gray-400">Allowed files: PDF</p>
+                </>
+              ) : (
+                <>
+                  <div className="mx-auto mb-2 inline-flex max-w-full items-center gap-2 truncate rounded border border-gray-700 bg-gray-800/70 px-2 py-1 text-sm text-gray-200">
+                    <span className="inline-block max-w-[16rem] truncate" title={file.name}>{file.name}</span>
+                    <span className="text-xs text-gray-400">({Math.ceil(file.size/1024)} KB)</span>
+                  </div>
+                  <p className="text-sm text-gray-300">Drag and drop / click to upload more files</p>
+                  <p className="text-xs text-gray-500">New files will replace the current selection</p>
+                </>
+              )}
             </div>
             <input id="file-input" type="file" accept="application/pdf" className="hidden" onChange={onSelectFile} />
           </div>
@@ -160,16 +176,7 @@ export default function HomePage() {
                     <label key={m} className="flex items-center gap-2 text-sm text-gray-200">
                       <input type="checkbox" className="h-4 w-4" checked={selectedModels.includes(m)} onChange={() => toggleModel(m)} />
                       <span className="capitalize">{m}</span>
-                      {!compare && (
-                        <input
-                          type="radio"
-                          name="primary"
-                          className="ml-auto h-4 w-4"
-                          checked={primary === m}
-                          onChange={() => setPrimary(m)}
-                          title="Set as primary for dual-pane view"
-                        />
-                      )}
+                      {/* Primary model is inferred as the first selected when not in compare mode */}
                     </label>
                   ))}
                 </div>
