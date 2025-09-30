@@ -19,18 +19,13 @@ export default function Sidebar({ currentFileName, uploadStatus }: SidebarProps)
           <div className="px-2 text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Navigation</div>
           <ul className="mt-2 space-y-1">
             <li>
-              <Link href="#" className="block rounded px-2 py-1.5 text-gray-800 hover:bg-gray-200/70 dark:text-gray-200 dark:hover:bg-gray-800/70">
-                New Extraction
+              <Link href="/" className="block rounded px-2 py-1.5 text-gray-800 hover:bg-gray-200/70 dark:text-gray-200 dark:hover:bg-gray-800/70">
+                Scan PDF
               </Link>
             </li>
             <li>
               <Link href="#" className="block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-200/70 dark:text-gray-300 dark:hover:bg-gray-800/70">
                 Examples
-              </Link>
-            </li>
-            <li>
-              <Link href="#" className="block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-200/70 dark:text-gray-300 dark:hover:bg-gray-800/70">
-                Settings
               </Link>
             </li>
           </ul>
@@ -40,39 +35,8 @@ export default function Sidebar({ currentFileName, uploadStatus }: SidebarProps)
           <div className="px-2 text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Resources</div>
           <ul className="mt-2 space-y-1">
             <li>
-              <Link href="#" className="block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-200/70 dark:text-gray-300 dark:hover:bg-gray-800/70">
-                Console
-              </Link>
-            </li>
-            <li>
-              <Link href="#" className="block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-200/70 dark:text-gray-300 dark:hover:bg-gray-800/70">
+              <Link href="/docs" className="block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-200/70 dark:text-gray-300 dark:hover:bg-gray-800/70">
                 Documentation
-              </Link>
-            </li>
-            <li>
-              <Link href="#" className="block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-200/70 dark:text-gray-300 dark:hover:bg-gray-800/70">
-                Contact Support
-              </Link>
-            </li>
-          </ul>
-        </div>
-
-        <div>
-          <div className="px-2 text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Quick Links</div>
-          <ul className="mt-2 space-y-1">
-            <li>
-              <Link href="#" className="block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-200/70 dark:text-gray-300 dark:hover:bg-gray-800/70">
-                Production Access
-              </Link>
-            </li>
-            <li>
-              <Link href="#" className="block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-200/70 dark:text-gray-300 dark:hover:bg-gray-800/70">
-                Pricing Info
-              </Link>
-            </li>
-            <li>
-              <Link href="#" className="block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-200/70 dark:text-gray-300 dark:hover:bg-gray-800/70">
-                Book a Demo
               </Link>
             </li>
           </ul>
