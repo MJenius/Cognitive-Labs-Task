@@ -8,3 +8,7 @@ Pillow==10.4.0
 modal>=0.68.0  # Updated from modal-client==0.61.0
 python-dotenv==1.0.1
 pytesseract==0.3.10
+# Performance optimizations
+aiofiles==23.2.1  # For async file operations
+redis==5.0.1       # For caching (if needed)
+httpx==0.25.0      # For async HTTP requests
