@@ -33,7 +33,6 @@ export default function HomePage() {
   const [isDragging, setDragging] = useState(false);
   const [selected, setSelected] = useState<ModelKey[]>([...ALL_MODELS]);
   const [primary, setPrimary] = useState<ModelKey>("surya");
-  const [maxPages, setMaxPages] = useState<number>(5);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ExtractResponse | null>(null);
@@ -86,7 +85,6 @@ export default function HomePage() {
       const form = new FormData();
       form.append("file", file);
       form.append("models", selected.join(","));
-      form.append("max_pages", String(maxPages));
       const res = await fetch(`${BACKEND_URL}/api/extract`, {
         method: "POST",
         body: form,
@@ -205,17 +203,6 @@ export default function HomePage() {
                 <label className="flex items-center gap-2 text-sm">
                   <span className="text-gray-200">Side-by-side comparison</span>
                   <input type="checkbox" className="ml-auto h-4 w-4" checked={compare} onChange={(e) => setCompare(e.target.checked)} />
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <span className="text-gray-200">Max pages</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={20}
-                    className="w-24 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-gray-100"
-                    value={maxPages}
-                    onChange={(e) => setMaxPages(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
-                  />
                 </label>
                 <button
                   className="mt-2 w-full rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-500 disabled:opacity-50"

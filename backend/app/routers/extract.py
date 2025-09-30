@@ -5,7 +5,7 @@ import io
 import time
 import logging
 
-from ..schemas import ExtractResponse, ModelOutput, ModelMeta
+from ..schemas import ExtractResponse, ModelOutput, ModelMeta, ElementCounts
 from ..adapters import get_adapter, KNOWN_MODELS
 from ..utils.pdf import load_pdf_doc, render_page_image
 from ..utils.annotate import annotate_blocks
@@ -40,7 +40,6 @@ async def extract(
     request: Request,
     file: UploadFile = File(...),
     models: str = Form("surya,docling,mineru"),
-    max_pages: int = Form(5),
 ):
     client_ip = request.client.host if request.client else "unknown"
     if not _allow_request(client_ip):
@@ -57,7 +56,7 @@ async def extract(
 
     doc = load_pdf_doc(pdf_bytes)
     total_pages = len(doc)
-    pages_to_process = min(total_pages, max_pages if max_pages > 0 else total_pages)
+    pages_to_process = total_pages
 
     selection = [m.strip().lower() for m in models.split(",") if m.strip()]
     if not selection:
@@ -95,6 +94,9 @@ async def extract(
             block_count=total_blocks,
             ocr_box_count=ocr_boxes,
             char_count=len(text_md or ""),
+            word_count=len((text_md or "").split()),
+            element_counts=ElementCounts(),
+            confidence=None,
         )
 
         outputs[model_name] = ModelOutput(
