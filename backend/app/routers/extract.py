@@ -67,7 +67,7 @@ async def extract(
     for model_name in selection:
         adapter = get_adapter(model_name)
         start = time.perf_counter()
-        text_md, blocks_by_page = adapter.extract(doc, max_pages=pages_to_process)
+        text_md, blocks_by_page = adapter.extract(doc)
         elapsed_ms = (time.perf_counter() - start) * 1000.0
 
         annotated_images: List[str] = []

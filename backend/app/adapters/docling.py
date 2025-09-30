@@ -10,9 +10,9 @@ from ..utils.ocr import ocr_image_to_text_and_boxes
 class DoclingAdapter(BaseAdapter):
     name = "docling"
 
-    def extract(self, doc: fitz.Document, max_pages: int = 5) -> Tuple[str, BlocksByPage]:
+    def extract(self, doc: fitz.Document, max_pages: int = None) -> Tuple[str, BlocksByPage]:
         # Placeholder implementation using PyMuPDF text + optional OCR overlay for images
-        pages = min(len(doc), max_pages)
+        pages = len(doc) if max_pages is None else min(len(doc), max_pages)
         md_parts: List[str] = []
         blocks: BlocksByPage = {}
         for i in range(pages):
