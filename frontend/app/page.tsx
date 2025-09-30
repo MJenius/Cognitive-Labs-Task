@@ -40,43 +40,57 @@ interface ExtractResponse {
   models: Record<string, ModelOutput>;
 }
 
+interface FileState {
+  id: string;
+  file: File;
+  status: 'pending' | 'uploading' | 'done' | 'error';
+  result?: ExtractResponse | null;
+  error?: string | null;
+}
+
 export default function HomePage() {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<FileState[]>([]);
+  const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setDragging] = useState(false);
   const [selected, setSelected] = useState<ModelKey[]>([...ALL_MODELS]);
   const [primary, setPrimary] = useState<ModelKey>("surya");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ExtractResponse | null>(null);
+  const [loading, setLoading] = useState(false); // any file currently processing
+  const [globalError, setGlobalError] = useState<string | null>(null);
   const [compare, setCompare] = useState<boolean>(false);
+
+  const appendFiles = (fileList: FileList | null) => {
+    if (!fileList) return;
+    const newStates: FileState[] = [];
+    Array.from(fileList).forEach((f, idx) => {
+      const isPdf = (f.type === 'application/pdf') || f.name.toLowerCase().endsWith('.pdf');
+      if (!isPdf) return; // silently skip non-pdf
+      const id = `${Date.now()}-${f.name}-${idx}-${Math.random().toString(36).slice(2,8)}`;
+      newStates.push({ id, file: f, status: 'pending', result: null, error: null });
+    });
+    if (newStates.length) {
+      setFiles(prev => [...prev, ...newStates]);
+      if (!activeFileId) setActiveFileId(newStates[0].id);
+      setGlobalError(null);
+    } else if (fileList.length > 0) {
+      setGlobalError('Only PDF files are accepted (.pdf)');
+    }
+  };
 
   const onDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setDragging(false);
-    const f = e.dataTransfer.files?.[0];
-    const isPdf = !!f && (f.type === "application/pdf" || f.name?.toLowerCase().endsWith(".pdf"));
-    if (f && isPdf) {
-      setFile(f);
-      setResult(null);
-      setError(null);
-    } else if (f) {
-      setError("Please drop a PDF file (.pdf)");
-    }
-  }, []);
+    appendFiles(e.dataTransfer.files);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFileId]);
 
   const onSelectFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    const isPdf = !!f && (f.type === "application/pdf" || f.name?.toLowerCase().endsWith(".pdf"));
-    if (f && isPdf) {
-      setFile(f);
-      setResult(null);
-      setError(null);
-    } else if (f) {
-      setError("Please choose a PDF file (.pdf)");
-    }
-  }, []);
+    appendFiles(e.target.files);
+    // reset input so selecting same file again re-triggers
+    if (inputRef.current) inputRef.current.value = '';
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFileId]);
 
   const toggleModel = (m: ModelKey) => {
     setSelected((prev) => {
@@ -90,40 +104,59 @@ export default function HomePage() {
   };
 
   const submit = async () => {
-    if (!file) return;
+    if (!files.length) return;
     setLoading(true);
-    setError(null);
-    setResult(null);
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("models", selected.join(","));
-      const res = await fetch(`${BACKEND_URL}/api/extract`, {
-        method: "POST",
-        body: form,
+    setGlobalError(null);
+    // process each file sequentially for simplicity
+    for (let i = 0; i < files.length; i++) {
+      const fState = files[i];
+      if (fState.status === 'uploading') continue; // skip already processing
+      // mark uploading
+      setFiles(prev => prev.map(fs => fs.id === fState.id ? { ...fs, status: 'uploading', error: null } : fs));
+      try {
+        const form = new FormData();
+        form.append('file', fState.file);
+        form.append('models', selected.join(','));
+        const res = await fetch(`${BACKEND_URL}/api/extract`, { method: 'POST', body: form });
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+        const data: ExtractResponse = await res.json();
+        setFiles(prev => prev.map(fs => fs.id === fState.id ? { ...fs, status: 'done', result: data } : fs));
+        if (!activeFileId) setActiveFileId(fState.id);
+      } catch (err: any) {
+        const msg = err?.message || 'Upload failed';
+        setFiles(prev => prev.map(fs => fs.id === fState.id ? { ...fs, status: 'error', error: msg } : fs));
+        setGlobalError(msg);
+      }
+    }
+    setLoading(false);
+  };
+
+  const removeFile = (id: string) => {
+    setFiles(prev => prev.filter(f => f.id !== id));
+    if (activeFileId === id) {
+      // pick another file if exists
+      setActiveFileId(prev => {
+        const remaining = files.filter(f => f.id !== id);
+        return remaining.length ? remaining[0].id : null;
       });
-      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-      const data: ExtractResponse = await res.json();
-      setResult(data);
-    } catch (err: any) {
-      setError(err?.message || "Upload failed");
-    } finally {
-      setLoading(false);
     }
   };
+
+  const activeFile = files.find(f => f.id === activeFileId) || files[0];
+  const activeResult = activeFile?.result || null;
 
   const selectedModels = useMemo(() => selected.filter((m) => ALL_MODELS.includes(m)), [selected]);
 
   return (
     <div className="flex min-h-screen flex-col lg:flex-row">
       <Sidebar
-        currentFileName={file?.name ?? null}
-        uploadStatus={loading ? "uploading" : result ? "done" : file ? "selected" : error ? "error" : "idle"}
+        currentFileName={activeFile?.file.name ?? null}
+        uploadStatus={loading ? 'uploading' : activeFile ? activeFile.status === 'done' ? 'done' : activeFile.status === 'error' ? 'error' : activeFile.status === 'uploading' ? 'uploading' : 'selected' : 'idle'}
       />
       
       <MobileSidebar
-        currentFileName={file?.name ?? null}
-        uploadStatus={loading ? "uploading" : result ? "done" : file ? "selected" : error ? "error" : "idle"}
+        currentFileName={activeFile?.file.name ?? null}
+        uploadStatus={loading ? 'uploading' : activeFile ? activeFile.status === 'done' ? 'done' : activeFile.status === 'error' ? 'error' : activeFile.status === 'uploading' ? 'uploading' : 'selected' : 'idle'}
       />
       
       {/* Mobile header with theme toggle */}
@@ -171,31 +204,52 @@ export default function HomePage() {
           >
             <div className="w-full text-center">
               <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 text-gray-600 dark:bg-gray-800/80 dark:text-gray-300">⬆</div>
-              {!file ? (
+              {files.length === 0 ? (
                 <>
                   <p className="font-medium text-gray-800 dark:text-gray-200">Drag and drop files here, or click to upload</p>
                   <p className="text-xs text-gray-600 dark:text-gray-400">Allowed files: PDF</p>
                 </>
               ) : (
                 <>
-                  <div className="mx-auto mb-2 inline-flex max-w-full items-center gap-2 truncate rounded border border-gray-300 bg-gray-200 px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800/70 dark:text-gray-200">
-                    <span className="inline-block max-w-[12rem] truncate sm:max-w-[16rem]" title={file.name}>{file.name}</span>
-                    <span className="text-xs text-gray-600 dark:text-gray-400">({Math.ceil(file.size/1024)} KB)</span>
-                  </div>
-                  <p className="text-sm text-gray-700 dark:text-gray-300">Drag and drop / click to upload more files</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-500">New files will replace the current selection</p>
+                  <p className="mb-2 text-sm font-medium text-gray-800 dark:text-gray-200">Selected Files</p>
+                  <ul className="mx-auto mb-3 max-h-40 w-full overflow-auto rounded border border-gray-200 bg-white p-1 text-left dark:border-gray-700 dark:bg-gray-800/60">
+                    {files.map(f => (
+                      <li key={f.id} className={clsx('group flex items-center gap-2 rounded px-2 py-1 text-xs', activeFileId === f.id ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-100 dark:hover:bg-gray-700/50')}>
+                        <button
+                          className="flex-1 truncate text-left text-gray-700 dark:text-gray-200"
+                          title={f.file.name}
+                          onClick={(e) => { e.stopPropagation(); setActiveFileId(f.id); }}
+                        >
+                          {f.file.name}
+                        </button>
+                        <span className="hidden shrink-0 text-gray-500 dark:text-gray-400 sm:inline">{Math.ceil(f.file.size/1024)} KB</span>
+                        <span className={clsx('shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium',
+                          f.status === 'pending' && 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
+                          f.status === 'uploading' && 'bg-blue-500/20 text-blue-600 dark:bg-blue-500/20 dark:text-blue-300',
+                          f.status === 'done' && 'bg-green-500/20 text-green-700 dark:bg-green-500/20 dark:text-green-300',
+                          f.status === 'error' && 'bg-red-500/20 text-red-600 dark:bg-red-500/20 dark:text-red-300'
+                        )}>{f.status}</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); removeFile(f.id); }}
+                          className="rounded p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-600/50 dark:hover:text-gray-200"
+                          aria-label="Remove file"
+                        >×</button>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">Drag & drop or click to add more PDFs</p>
                 </>
               )}
             </div>
-            <input id="file-input" ref={inputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={onSelectFile} />
+            <input id="file-input" ref={inputRef} type="file" multiple accept="application/pdf,.pdf" className="hidden" onChange={onSelectFile} />
           </div>
 
           {/* Right: Empty state & controls */}
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/50">
-            {!result ? (
+            {!activeResult ? (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
                 <div className="text-4xl">📄</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">No content extracted yet</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">{files.length ? 'Select extract to view or run extraction' : 'No files selected yet'}</div>
                 <div className="flex flex-wrap items-center justify-center gap-2">
                   <button
                     className="rounded border border-gray-300 bg-gray-200 px-3 py-1.5 text-sm text-gray-800 hover:bg-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
@@ -212,7 +266,7 @@ export default function HomePage() {
                 </div>
               </div>
             ) : (
-              <div className="text-sm text-gray-700 dark:text-gray-300">Processed {result.pages} page(s).</div>
+              <div className="text-sm text-gray-700 dark:text-gray-300">Processed {activeResult.pages} page(s) • File: {activeFile?.file.name}</div>
             )}
 
             {/* Controls */}
@@ -247,24 +301,24 @@ export default function HomePage() {
                 <button
                   className="mt-2 w-full rounded bg-blue-600 px-3 py-2 text-white transition-colors hover:bg-blue-500 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500"
                   onClick={submit}
-                  disabled={!file || selectedModels.length === 0 || loading}
+                  disabled={files.length === 0 || selectedModels.length === 0 || loading}
                 >
-                  {loading ? "Processing..." : "Extract All Pages"}
+                  {loading ? 'Processing Files...' : `Extract (${files.filter(f=>f.status!== 'done').length || 'All Done'})`}
                 </button>
-                {error && <div className="mt-2 rounded bg-red-100 p-2 text-sm text-red-800 dark:bg-red-900/40 dark:text-red-300">{error}</div>}
-                {file && <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Selected: {file.name}</div>}
+                {globalError && <div className="mt-2 rounded bg-red-100 p-2 text-sm text-red-800 dark:bg-red-900/40 dark:text-red-300">{globalError}</div>}
+                {files.length > 0 && <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">{files.length} file(s) selected</div>}
               </div>
             </div>
           </div>
         </section>
 
         {/* Results */}
-        {result && (
+        {activeResult && (
           <section className="mt-6 space-y-4">
             {!compare ? (
-              <DualPane model={primary} data={result.models[primary]} />
+              <DualPane model={primary} data={activeResult.models[primary]} />
             ) : (
-              <ComparisonGrid selected={selectedModels} data={result.models} />
+              <ComparisonGrid selected={selectedModels} data={activeResult.models} />
             )}
           </section>
         )}
