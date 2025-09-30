@@ -8,6 +8,12 @@ Pillow==10.4.0
 modal>=0.68.0  # Updated from modal-client==0.61.0
 python-dotenv==1.0.1
 pytesseract==0.3.10
+
+# Real PDF extraction models
+surya-ocr>=0.4.0
+docling>=1.0.0
+magic-pdf[full]>=0.6.0  # MinerU
+
 # Performance optimizations
 aiofiles==23.2.1  # For async file operations
 redis==5.0.1       # For caching (if needed)
