@@ -2,6 +2,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .routers.extract import router as extract_router
+from .utils.pdf import have_fitz, fitz_import_error
 
 
 def create_app() -> FastAPI:
@@ -20,8 +21,16 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     def health():
-        return {"status": "ok"}
+        return {
+            "status": "ok",
+            "pdf_engine": "fitz" if have_fitz() else "fallback",
+            "fitz_available": have_fitz(),
+            "fitz_error": str(fitz_import_error()) if not have_fitz() else None,
+        }
 
     app.include_router(extract_router, prefix="/api")
 
     return app
+
+# Expose a module-level `app` instance for `uvicorn app.main:app`
+app = create_app()
