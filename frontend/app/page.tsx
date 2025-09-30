@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import clsx from "clsx";
 import Sidebar from "../components/Sidebar";
@@ -29,6 +29,7 @@ interface ExtractResponse {
 
 export default function HomePage() {
   const [file, setFile] = useState<File | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setDragging] = useState(false);
   const [selected, setSelected] = useState<ModelKey[]>([...ALL_MODELS]);
   const [primary, setPrimary] = useState<ModelKey>("surya");
@@ -43,7 +44,8 @@ export default function HomePage() {
     e.stopPropagation();
     setDragging(false);
     const f = e.dataTransfer.files?.[0];
-    if (f && f.type === "application/pdf") {
+    const isPdf = !!f && (f.type === "application/pdf" || f.name?.toLowerCase().endsWith(".pdf"));
+    if (f && isPdf) {
       setFile(f);
       setResult(null);
       setError(null);
@@ -54,7 +56,8 @@ export default function HomePage() {
 
   const onSelectFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
-    if (f && f.type === "application/pdf") {
+    const isPdf = !!f && (f.type === "application/pdf" || f.name?.toLowerCase().endsWith(".pdf"));
+    if (f && isPdf) {
       setFile(f);
       setResult(null);
       setError(null);
@@ -118,6 +121,14 @@ export default function HomePage() {
               "relative flex h-72 cursor-pointer items-center justify-center rounded-lg border border-dashed p-4",
               isDragging ? "border-blue-500 bg-blue-950/40" : "border-gray-700 bg-gray-900/50"
             )}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                inputRef.current?.click();
+              }
+            }}
             onDragOver={(e) => {
               e.preventDefault();
               setDragging(true);
@@ -127,7 +138,7 @@ export default function HomePage() {
               setDragging(false);
             }}
             onDrop={onDrop}
-            onClick={() => document.getElementById("file-input")?.click()}
+            onClick={() => inputRef.current?.click()}
           >
             <div className="w-full text-center">
               <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-gray-800/80 text-gray-300">⬆</div>
@@ -147,7 +158,7 @@ export default function HomePage() {
                 </>
               )}
             </div>
-            <input id="file-input" type="file" accept="application/pdf" className="hidden" onChange={onSelectFile} />
+            <input id="file-input" ref={inputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={onSelectFile} />
           </div>
 
           {/* Right: Empty state & controls */}
