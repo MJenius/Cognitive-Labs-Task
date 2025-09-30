@@ -6,6 +6,7 @@ import clsx from "clsx";
 import Sidebar from "../components/Sidebar";
 import MobileSidebar from "../components/MobileSidebar";
 import ThemeToggle from "../components/ThemeToggle";
+import ZoomableImage from "../components/ZoomableImage";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 const ALL_MODELS = ["surya", "docling", "mineru"] as const;
@@ -518,7 +519,13 @@ function DualPane({ model, data }: { model: ModelKey; data: ModelOutput }) {
         </div>
         <div className="max-h-[70vh] overflow-auto">
           {data.annotated_images.map((src, idx) => (
-            <img key={idx} src={src} alt={`Page ${idx + 1}`} className="mx-auto mb-2 w-full max-w-3xl" />
+            <div key={idx} className="h-96 w-full">
+              <ZoomableImage 
+                src={src} 
+                alt={`Page ${idx + 1}`} 
+                className="h-full w-full object-contain"
+              />
+            </div>
           ))}
         </div>
       </div>
@@ -702,12 +709,13 @@ function ComparisonGrid({ selected, data }: { selected: ModelKey[]; data: Record
             {activeTab === 'images' && (
               <div className="max-h-[50vh] overflow-auto">
                 {data[model]?.annotated_images?.map((src, idx) => (
-                  <img 
-                    key={idx} 
-                    src={src} 
-                    alt={`${model} page ${idx + 1}`} 
-                    className="mx-auto mb-2 w-full max-w-full rounded border border-gray-200 dark:border-gray-700" 
-                  />
+                  <div key={idx} className="h-64 w-full rounded border border-gray-200 dark:border-gray-700">
+                    <ZoomableImage 
+                      src={src} 
+                      alt={`${model} page ${idx + 1}`} 
+                      className="h-full w-full object-contain rounded"
+                    />
+                  </div>
                 ))}
               </div>
             )}
