@@ -53,6 +53,8 @@ interface FileState {
     pageStart: string; // keep as string for input binding
     pageEnd: string;
   };
+  previewData?: string | null;
+  progress?: number; // 0-100
 }
 
 export default function HomePage() {
@@ -79,7 +81,7 @@ export default function HomePage() {
       const isPdf = (f.type === 'application/pdf') || f.name.toLowerCase().endsWith('.pdf');
       if (!isPdf) return; // silently skip non-pdf
       const id = `${Date.now()}-${f.name}-${idx}-${Math.random().toString(36).slice(2,8)}`;
-      newStates.push({ id, file: f, status: 'pending', result: null, error: null, settings: {
+      newStates.push({ id, file: f, status: 'pending', result: null, error: null, previewData: null, progress: 0, settings: {
         selectedModels: [...ALL_MODELS],
         primaryModel: 'surya',
         compare: false,
@@ -91,8 +93,43 @@ export default function HomePage() {
       setFiles(prev => [...prev, ...newStates]);
       if (!activeFileId) setActiveFileId(newStates[0].id);
       setGlobalError(null);
+      newStates.forEach(fs => generatePreview(fs.id, fs.file));
     } else if (fileList.length > 0) {
       setGlobalError('Only PDF files are accepted (.pdf)');
+    }
+  };
+
+  const generatePreview = async (fileId: string, file: File) => {
+    try {
+      if (typeof window === 'undefined') return; // SSR guard
+      let pdfjs: any;
+      try {
+        pdfjs = await import('pdfjs-dist');
+      } catch {
+        pdfjs = await import('pdfjs-dist/build/pdf');
+      }
+      // attempt to set worker if available
+      try {
+        const worker = await import('pdfjs-dist/build/pdf.worker.mjs');
+        // @ts-ignore
+        if (pdfjs.GlobalWorkerOptions) pdfjs.GlobalWorkerOptions.workerSrc = worker;
+      } catch { /* ignore */ }
+      const data = await file.arrayBuffer();
+      const loadingTask = (pdfjs as any).getDocument({ data });
+      const pdf = await loadingTask.promise;
+      const page = await pdf.getPage(1);
+      const viewport = page.getViewport({ scale: 0.25 });
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('no canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      const url = canvas.toDataURL('image/png');
+      setFiles(prev => prev.map(f => f.id === fileId ? { ...f, previewData: url } : f));
+    } catch (e) {
+      console.warn('Preview generation failed', e);
+      setFiles(prev => prev.map(f => f.id === fileId ? { ...f, previewData: null } : f));
     }
   };
 
@@ -124,13 +161,23 @@ export default function HomePage() {
     });
   };
 
+  const simulateProgress = (fileId: string) => {
+    let pct = 0;
+    const interval = setInterval(() => {
+      pct = Math.min(95, pct + 5 + Math.random()*8);
+      setFiles(prev => prev.map(f => f.id === fileId ? { ...f, progress: pct } : f));
+    }, 350);
+    return interval;
+  };
+
   const processSingleFile = async (fileId: string) => {
     const fState = files.find(f => f.id === fileId);
     if (!fState) return;
     const { selectedModels, pageStart, pageEnd } = fState.settings;
     if (!selectedModels.length) return;
     setLoading(true);
-    setFiles(prev => prev.map(fs => fs.id === fileId ? { ...fs, status: 'uploading', error: null } : fs));
+    setFiles(prev => prev.map(fs => fs.id === fileId ? { ...fs, status: 'uploading', error: null, progress: 5 } : fs));
+    const interval = simulateProgress(fileId);
     try {
       const form = new FormData();
       form.append('file', fState.file);
@@ -142,12 +189,14 @@ export default function HomePage() {
       const res = await fetch(`${BACKEND_URL}/api/extract`, { method: 'POST', body: form });
       if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       const data: ExtractResponse = await res.json();
-      setFiles(prev => prev.map(fs => fs.id === fileId ? { ...fs, status: 'done', result: data } : fs));
+      setFiles(prev => prev.map(fs => fs.id === fileId ? { ...fs, status: 'done', result: data, progress: 100 } : fs));
       if (!activeFileId) setActiveFileId(fState.id);
     } catch (err: any) {
       const msg = err?.message || 'Upload failed';
-      setFiles(prev => prev.map(fs => fs.id === fileId ? { ...fs, status: 'error', error: msg } : fs));
+      setFiles(prev => prev.map(fs => fs.id === fileId ? { ...fs, status: 'error', error: msg, progress: 0 } : fs));
       setGlobalError(msg);
+    } finally {
+      clearInterval(interval);
     }
     setLoading(false);
   };
@@ -161,7 +210,8 @@ export default function HomePage() {
       if (fState.status === 'uploading') continue;
       const { selectedModels, pageStart, pageEnd } = fState.settings;
       if (!selectedModels.length) continue; // skip if user deselected all
-      setFiles(prev => prev.map(fs => fs.id === fState.id ? { ...fs, status: 'uploading', error: null } : fs));
+      setFiles(prev => prev.map(fs => fs.id === fState.id ? { ...fs, status: 'uploading', error: null, progress: 5 } : fs));
+      const interval = simulateProgress(fState.id);
       try {
         const form = new FormData();
         form.append('file', fState.file);
@@ -173,12 +223,14 @@ export default function HomePage() {
         const res = await fetch(`${BACKEND_URL}/api/extract`, { method: 'POST', body: form });
         if (!res.ok) throw new Error(`Request failed: ${res.status}`);
         const data: ExtractResponse = await res.json();
-        setFiles(prev => prev.map(fs => fs.id === fState.id ? { ...fs, status: 'done', result: data } : fs));
+        setFiles(prev => prev.map(fs => fs.id === fState.id ? { ...fs, status: 'done', result: data, progress: 100 } : fs));
         if (!activeFileId) setActiveFileId(fState.id);
       } catch (err: any) {
         const msg = err?.message || 'Upload failed';
-        setFiles(prev => prev.map(fs => fs.id === fState.id ? { ...fs, status: 'error', error: msg } : fs));
+        setFiles(prev => prev.map(fs => fs.id === fState.id ? { ...fs, status: 'error', error: msg, progress: 0 } : fs));
         setGlobalError(msg);
+      } finally {
+        clearInterval(interval);
       }
     }
     setLoading(false);
@@ -269,28 +321,51 @@ export default function HomePage() {
               ) : (
                 <>
                   <p className="mb-2 text-sm font-medium text-gray-800 dark:text-gray-200">Selected Files</p>
-                  <ul className="mx-auto mb-3 max-h-40 w-full overflow-auto rounded border border-gray-200 bg-white p-1 text-left dark:border-gray-700 dark:bg-gray-800/60">
+                  <ul className="mx-auto mb-3 w-full overflow-auto rounded border border-gray-200 bg-white p-1 text-left dark:border-gray-700 dark:bg-gray-800/60 lg:max-h-full" style={{maxHeight: 'calc(100vh - 16rem)'}}>
                     {files.map(f => (
-                      <li key={f.id} className={clsx('group flex items-center gap-2 rounded px-2 py-1 text-xs', activeFileId === f.id ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-100 dark:hover:bg-gray-700/50')}>
-                        <button
-                          className="flex-1 truncate text-left text-gray-700 dark:text-gray-200"
-                          title={f.file.name}
-                          onClick={(e) => { e.stopPropagation(); setActiveFileId(f.id); }}
-                        >
-                          {f.file.name}
-                        </button>
-                        <span className="hidden shrink-0 text-gray-500 dark:text-gray-400 sm:inline">{Math.ceil(f.file.size/1024)} KB</span>
-                        <span className={clsx('shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium',
-                          f.status === 'pending' && 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
-                          f.status === 'uploading' && 'bg-blue-500/20 text-blue-600 dark:bg-blue-500/20 dark:text-blue-300',
-                          f.status === 'done' && 'bg-green-500/20 text-green-700 dark:bg-green-500/20 dark:text-green-300',
-                          f.status === 'error' && 'bg-red-500/20 text-red-600 dark:bg-red-500/20 dark:text-red-300'
-                        )}>{f.status}</span>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); removeFile(f.id); }}
-                          className="rounded p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-600/50 dark:hover:text-gray-200"
-                          aria-label="Remove file"
-                        >×</button>
+                      <li key={f.id} className={clsx('group flex flex-col gap-1 rounded px-2 py-2 text-xs', activeFileId === f.id ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-100 dark:hover:bg-gray-700/50')}>
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="flex-1 truncate text-left text-gray-700 dark:text-gray-200"
+                            title={f.file.name}
+                            onClick={(e) => { e.stopPropagation(); setActiveFileId(f.id); }}
+                          >
+                            {f.file.name}
+                          </button>
+                          <span className={clsx('shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium',
+                            f.status === 'pending' && 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
+                            f.status === 'uploading' && 'bg-blue-500/20 text-blue-600 dark:bg-blue-500/20 dark:text-blue-300',
+                            f.status === 'done' && 'bg-green-500/20 text-green-700 dark:bg-green-500/20 dark:text-green-300',
+                            f.status === 'error' && 'bg-red-500/20 text-red-600 dark:bg-red-500/20 dark:text-red-300'
+                          )}>{f.status}{f.status === 'uploading' && typeof f.progress === 'number' ? ` ${(f.progress|0)}%` : ''}</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); removeFile(f.id); }}
+                            className="rounded p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-600/50 dark:hover:text-gray-200"
+                            aria-label="Remove file"
+                          >×</button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="h-12 w-10 shrink-0 overflow-hidden rounded border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800 flex items-center justify-center">
+                            {f.previewData ? <img src={f.previewData} alt="preview" className="h-full w-full object-cover" /> : <span className="text-[9px] text-gray-500 dark:text-gray-400">Preview</span>}
+                          </div>
+                          <div className="flex-1">
+                            {f.status === 'uploading' && (
+                              <div className="h-1.5 w-full overflow-hidden rounded bg-gray-200 dark:bg-gray-700">
+                                <div className="h-full bg-blue-500 transition-all" style={{ width: `${Math.min(100, f.progress||0)}%` }} />
+                              </div>
+                            )}
+                            {f.status === 'done' && (
+                              <div className="h-1.5 w-full overflow-hidden rounded bg-gray-200 dark:bg-gray-700">
+                                <div className="h-full bg-green-500" style={{ width: '100%' }} />
+                              </div>
+                            )}
+                            {f.status === 'error' && (
+                              <div className="h-1.5 w-full overflow-hidden rounded bg-gray-200 dark:bg-gray-700">
+                                <div className="h-full bg-red-500" style={{ width: '100%' }} />
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </li>
                     ))}
                   </ul>
