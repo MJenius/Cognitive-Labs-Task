@@ -5,7 +5,7 @@ This is a FastAPI backend designed to run on [Modal](https://modal.com). It acce
 Note: The current adapters are lightweight placeholders using PyMuPDF text extraction and layout blocks. You can replace each adapter with real integrations when you add their dependencies.
 
 ## Endpoints
-
+commit
 - POST `/api/extract` (multipart/form-data)
   - fields:
     - `file`: the PDF file
