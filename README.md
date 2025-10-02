@@ -1,21 +1,21 @@
 # PDF Extraction Playground
 
-[![Ask DeepWiki](https://devin.ai/assets/askdeepwiki.png)](https://deepwiki.com/MJenius/Cognitive-Labs-Task)
+A full-stack application designed to upload PDF files, process them using various extraction models, and display the results for comparison. It's a monorepo consisting of a Next.js frontend and a FastAPI backend.
 
-This repository contains a full-stack application designed to upload PDF files, process them using various extraction models, and display the results for comparison. It's a monorepo consisting of a Next.js frontend and a FastAPI backend.
-
-The application allows users to upload a PDF and compare the extraction results from three placeholder models: **Surya**, **Docling**, and **MinerU**. The UI displays the extracted markdown content alongside the original PDF pages annotated with bounding boxes for detected elements.
+The application allows users to upload PDFs and compare the extraction results from three models: **Surya**, **Docling**, and **MinerU**. The system attempts to use these specialized models for optimal extraction, with automatic fallback to PyMuPDF to ensure reliable functionality. The UI displays the extracted markdown content alongside the original PDF pages annotated with bounding boxes for detected elements.
 
 ## Features
 
--   **Monorepo Architecture**: Clean separation of frontend and backend concerns.
--   **PDF Upload**: Drag-and-drop or file-picker interface for uploading PDF documents.
--   **Multi-Model Extraction**: Concurrently process PDFs with multiple extraction backends.
--   **Dual-Pane Viewer**: View a model's extracted markdown side-by-side with zoomable, annotated page images.
--   **Comparison View**: Compare results from all selected models in a grid layout, including a detailed metrics table.
--   **Pluggable Backend Adapters**: Easily extend the backend to support new extraction models.
--   **Deployable**: The backend is ready for deployment on [Modal](https://modal.com), and the frontend on [Vercel](https://vercel.com).
--   **Dark/Light Mode**: Themed UI for user preference.
+- **Monorepo Architecture**: Clean separation of frontend and backend concerns.
+- **PDF Upload**: Drag-and-drop or file-picker interface for uploading PDF documents.
+- **Multi-Model Extraction**: Attempts to process PDFs with multiple extraction backends, falling back to PyMuPDF when needed.
+- **Page Range Selection**: Extract specific page ranges from PDF documents.
+- **Dual-Pane Viewer**: View a model's extracted markdown side-by-side with zoomable, annotated page images.
+- **Comparison View**: Compare results from all selected models in a grid layout, including a detailed metrics table.
+- **Zoomable Images**: Interactive PDF page viewing with zoom, pan, and pinch controls.
+- **Dark/Light Mode**: Themed UI for user preference.
+- **Robust Fallback**: PyMuPDF fallback ensures functionality even when specialized models are unavailable.
+- **Deployable**: Ready for deployment on [Modal](https://modal.com) and [Vercel](https://vercel.com).
 
 ## Architecture
 
@@ -23,164 +23,238 @@ The project is a monorepo with two main components: `frontend` and `backend`.
 
 ### Backend (FastAPI)
 
--   **Framework**: Built with FastAPI, providing a robust and fast API service.
--   **Entrypoint**: `backend/app/main.py` creates the FastAPI app, configures CORS, and mounts the API router.
--   **Deployment**: `backend/modal_app.py` contains the configuration for one-command deployment to the Modal serverless platform.
--   **Extraction Pipeline**: The `POST /api/extract` endpoint in `backend/app/routers/extract.py` handles file uploads. It utilizes an adapter pattern to call the selected extraction models.
--   **Adapters**: Models are integrated via a common `BaseAdapter` interface. Current implementations in `backend/app/adapters/` are placeholders using `PyMuPDF` for basic text and block extraction and `Pytesseract` for OCR. This is where real model libraries would be integrated.
--   **PDF Processing**: `PyMuPDF` is the core engine for PDF parsing and rendering. A fallback mode is implemented for environments where `PyMuPDF` fails (e.g., due to DLL issues), ensuring the application remains functional, albeit with placeholder data.
--   **Health Check**: A `/health` endpoint is available to check the status of the PDF processing engine.
+- **Framework**: Built with FastAPI, providing a robust and fast API service.
+- **Entrypoint**: `backend/app/main.py` creates the FastAPI app, configures CORS, and mounts the API router.
+- **Deployment**: `backend/modal_app.py` contains the configuration for one-command deployment to Modal.
+- **Extraction Pipeline**: The `POST /api/extract` endpoint in `backend/app/routers/extract.py` handles file uploads and utilizes an adapter pattern.
+- **Model Adapters**: Three extraction models are integrated via a common `BaseAdapter` interface:
+  - `SuryaAdapter` - Attempts specialized layout detection with PyMuPDF fallback
+  - `DoclingAdapter` - Attempts enhanced text formatting with PyMuPDF fallback
+  - `MinerUAdapter` - Attempts optimized fast processing with PyMuPDF fallback
+- **PDF Processing**: PyMuPDF (`backend/app/utils/pdf.py`) is the core engine for PDF parsing and rendering with intelligent fallback modes.
+- **Rate Limiting**: Built-in rate limiting (12 requests per minute per IP).
+- **Health Monitoring**: `/health` endpoint reports PDF engine status and availability.
 
 ### Frontend (Next.js)
 
--   **Framework**: Built with Next.js 14 (App Router), React, and styled with Tailwind CSS.
--   **UI Flow**: `frontend/app/page.tsx` implements the main user interface for file upload, model selection, and displaying results.
--   **State Management**: React state is used to manage file uploads, processing status, and API results.
--   **Result Display**:
-    -   A dual-pane view shows one model's annotated images and markdown.
-    -   A comparison grid provides a side-by-side view of all selected models, with a detailed metrics table summarizing performance and output characteristics.
--   **Environment**: The frontend requires the `NEXT_PUBLIC_BACKEND_URL` environment variable to connect to the backend API.
+- **Framework**: Built with Next.js 14 (App Router), React, and styled with Tailwind CSS.
+- **Main Interface**: `frontend/app/page.tsx` implements the complete user workflow.
+- **State Management**: React state manages file uploads, processing status, and results.
+- **Interactive Components**:
+  - `Sidebar` - Navigation and file status
+  - `ZoomableImage` - Interactive PDF page viewer with zoom controls
+  - `ThemeToggle` - Dark/light mode switching
+- **Responsive Design**: Mobile-friendly with `MobileSidebar` for smaller screens.
+- **Results Display**:
+  - Dual-pane view showing annotated images alongside extracted markdown
+  - Comparison grid with detailed metrics and side-by-side model outputs
+  - Performance analytics including processing time, element counts, and confidence scores
 
 ## Getting Started
 
-Follow these steps to set up and run the project locally.
-
 ### Prerequisites
 
--   Node.js (v18.17 or later)
--   npm or yarn
--   Python (v3.10 or later) and `pip`
+- Node.js (v18.17 or later)
+- npm or yarn
+- Python (v3.10 or later) and `pip`
 
 ### Backend Setup
 
-1.  **Navigate to the backend directory:**
-    ```bash
-    cd backend
-    ```
+1. **Navigate to the backend directory:**
+   ```bash
+   cd backend
+   ```
 
-2.  **Create and activate a Python virtual environment:**
-    ```bash
-    # For macOS/Linux
-    python3 -m venv .venv
-    source .venv/bin/activate
+2. **Create and activate a Python virtual environment:**
+   ```bash
+   # For macOS/Linux
+   python3 -m venv .venv
+   source .venv/bin/activate
 
-    # For Windows (PowerShell)
-    python -m venv .venv
-    .\.venv\Scripts\Activate.ps1
-    ```
+   # For Windows (PowerShell)
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   ```
 
-3.  **Install the required Python packages:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-4.  **Run the FastAPI development server:**
-    ```bash
-    uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --reload
-    ```
-    The backend API will be available at `http://localhost:8000`.
+4. **Run the development server:**
+   ```bash
+   uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --reload
+   ```
+   The backend API will be available at `http://localhost:8000`.
 
 ### Frontend Setup
 
-1.  **Navigate to the frontend directory:**
-    ```bash
-    cd frontend
-    ```
+1. **Navigate to the frontend directory:**
+   ```bash
+   cd frontend
+   ```
 
-2.  **Install the required Node.js packages:**
-    ```bash
-    npm install
-    ```
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
 
-3.  **Configure environment variables:**
-    Copy the example environment file and set the backend URL.
-    ```bash
-    cp .env.local.example .env.local
-    ```
-    Ensure `NEXT_PUBLIC_BACKEND_URL` in `frontend/.env.local` is set to `http://localhost:8000`.
+3. **Configure environment variables:**
+   ```bash
+   cp .env.local.example .env.local
+   ```
+   Set `NEXT_PUBLIC_BACKEND_URL` in `frontend/.env.local` to `http://localhost:8000`.
 
-4.  **Run the Next.js development server:**
-    ```bash
-    npm run dev
-    ```
-    The frontend will be available at `http://localhost:3000`.
+4. **Run the development server:**
+   ```bash
+   npm run dev
+   ```
+   The frontend will be available at `http://localhost:3000`.
 
 ## Deployment
 
 ### Backend on Modal
 
-The backend is designed for easy deployment on Modal.
+1. **Install Modal CLI:**
+   ```bash
+   pip install modal
+   ```
 
-1.  **Install the Modal client:**
-    ```bash
-    pip install modal-client
-    ```
+2. **Set up Modal token:**
+   ```bash
+   modal token new
+   ```
 
-2.  **Set up your Modal token:**
-    ```bash
-    modal token new
-    ```
-
-3.  **Deploy the application:**
-    From the root of the repository, run:
-    ```bash
-    modal deploy backend/modal_app.py
-    ```
-    Modal will provide a public URL for your deployed backend.
+3. **Deploy:**
+   ```bash
+   modal deploy backend/modal_app.py
+   ```
 
 ### Frontend on Vercel
 
-The frontend can be deployed to Vercel or any other static hosting provider.
+The project includes `vercel.json` for automatic configuration:
 
-1.  Push the repository to a Git provider (e.g., GitHub).
-2.  Import the repository into your Vercel account.
-3.  Set the **Root Directory** to `frontend`.
-4.  Add an environment variable `NEXT_PUBLIC_BACKEND_URL` and set its value to the URL of your deployed Modal backend.
-5.  Deploy.
+1. Push to GitHub/GitLab/Bitbucket
+2. Import repository in Vercel
+3. Set root directory to `frontend`
+4. Deploy automatically with pre-configured environment variables
 
-**Note:** After deploying, ensure your backend's `CORS_ORIGINS` environment variable is updated to include your Vercel application's domain.
+## API Reference
 
-## API Endpoint
+### Extract Endpoint
 
-The primary API endpoint for extracting data from a PDF is:
+**`POST /api/extract`**
 
--   **Endpoint**: `POST /api/extract`
--   **Content-Type**: `multipart/form-data`
--   **Form Fields**:
-    -   `file`: The PDF file to process.
-    -   `models` (string): A comma-separated list of models to use (e.g., `surya,docling,mineru`).
-    -   `page_start` (optional, integer): The starting page number for extraction (1-indexed).
-    -   `page_end` (optional, integer): The ending page number for extraction.
+Upload and process a PDF file with selected models.
 
--   **Success Response**: A JSON object containing the number of pages processed and a dictionary of model outputs. Each model's output includes `text_markdown`, `annotated_images` (as data URLs), and metadata.
+**Form Data:**
+- `file` (required): PDF file to process
+- `models` (optional): Comma-separated list of models (`surya,docling,mineru`)
+- `page_start` (optional): Starting page number (1-indexed)
+- `page_end` (optional): Ending page number
 
+**Response:**
 ```json
 {
-  "pages": 1,
+  "pages": 3,
   "models": {
     "surya": {
-      "text_markdown": "# Page 1 (Surya)...",
+      "text_markdown": "# Extracted content...",
       "annotated_images": ["data:image/png;base64,..."],
       "meta": {
-        "time_ms": 123.45,
-        "block_count": 15,
+        "time_ms": 1250.0,
+        "block_count": 45,
         "ocr_box_count": 0,
-        "char_count": 1200,
-        "word_count": 200,
+        "char_count": 5420,
+        "word_count": 892,
         "element_counts": {
-          "titles": 1,
-          "headers": 2,
-          "paragraphs": 10,
-          "tables": 1,
+          "titles": 3,
+          "headers": 8,
+          "paragraphs": 12,
+          "tables": 2,
           "figures": 1
         },
-        "confidence": 0.95
+        "confidence": 0.94
       }
     }
   }
 }
 ```
 
+### Health Check
+
+**`GET /health`**
+
+Check backend status and PDF engine availability.
+
+```json
+{
+  "status": "ok",
+  "pdf_engine": "fitz",
+  "fitz_available": true,
+  "fitz_error": null
+}
+```
+
 ## Troubleshooting
 
-The backend relies on `PyMuPDF`, which can sometimes have installation issues, particularly with DLLs on Windows. A troubleshooting guide is available at `backend/BACKEND_TROUBLESHOOTING.md` to help resolve these problems. You can also check the `/health` endpoint on the backend to see if it has entered `fallback` mode.
+### PyMuPDF Issues
+
+The backend uses PyMuPDF for PDF processing. If you encounter issues:
+
+1. **Check engine status:**
+   ```bash
+   curl http://localhost:8000/health
+   ```
+
+2. **Common Windows fixes:**
+   - Install Visual C++ Redistributable
+   - Use 64-bit Python
+   - Clear pip cache: `pip cache purge`
+
+3. **Detailed troubleshooting:**
+   See `backend/BACKEND_TROUBLESHOOTING.md`
+
+### Fallback Mode
+
+When specialized extraction models are unavailable, the system automatically uses PyMuPDF fallback:
+- Provides reliable text extraction using PyMuPDF's core functionality
+- Generates page images with basic element detection
+- Maintains full API compatibility
+- Sets confidence scores based on extraction quality
+
+### Common Issues
+
+- **CORS errors**: Ensure backend `CORS_ORIGINS` includes your frontend domain
+- **File upload fails**: Check file size (max 15MB) and format (PDF only)
+- **Slow processing**: Large files with many pages - try reducing page range
+
+## Configuration
+
+### Environment Variables
+
+**Frontend:**
+- `NEXT_PUBLIC_BACKEND_URL`: Backend API base URL
+
+**Backend:**
+- `CORS_ORIGINS`: Comma-separated list of allowed origins
+
+### File Limits
+
+- Maximum file size: 15MB
+- Rate limit: 12 requests per minute per IP
+- Supported format: PDF only
+
+## Development
+
+The project uses:
+- **TypeScript** for type safety
+- **Tailwind CSS** for styling
+- **React Zoom Pan Pinch** for interactive image viewing
+- **React Markdown** for content rendering
+- **Pydantic** for API validation
+- **FastAPI** for backend framework
+
+## License
+
+This project is open source and available under standard terms.
