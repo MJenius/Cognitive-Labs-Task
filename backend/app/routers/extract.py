@@ -4,6 +4,8 @@ import base64
 import io
 import time
 import logging
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 from ..schemas import ExtractResponse, ModelOutput, ModelMeta, ElementCounts
 from ..adapters import get_adapter, KNOWN_MODELS
@@ -13,11 +15,9 @@ from ..utils.annotate import annotate_blocks
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["extract"])
 
-
 # Simple in-memory rate limiter (best-effort)
 _RATE: Dict[str, List[float]] = {}
 _MAX_REQ_PER_MIN = 12
-
 
 def _allow_request(ip: str) -> bool:
     now = time.time()
@@ -31,9 +31,7 @@ def _allow_request(ip: str) -> bool:
     buf.append(now)
     return True
 
-
 MAX_FILE_BYTES = 15 * 1024 * 1024  # 15 MB
-
 
 @router.post("/extract", response_model=ExtractResponse)
 async def extract(
@@ -76,7 +74,7 @@ async def extract(
 
     outputs: Dict[str, ModelOutput] = {}
 
-    for model_name in selection:
+    def process_model(model_name: str):
         adapter = get_adapter(model_name)
         start = time.perf_counter()
         text_md, blocks_by_page = adapter.extract(doc)
@@ -85,26 +83,23 @@ async def extract(
         annotated_images: List[str] = []
         total_blocks = 0
         ocr_boxes = 0
+        
         for i in range(start_idx, start_idx + pages_to_process):
-            img = render_page_image(doc, i, dpi=96)
+            img = render_page_image(doc, i, dpi=72)
             page_rect = (doc[i].rect.width, doc[i].rect.height)
             page_blocks = blocks_by_page.get(i, [])
             total_blocks += len(page_blocks)
-            # Heuristic: OCR boxes appended after pm_blocks in adapters; approximate OCR count
-            # Split by half if both existed; otherwise 0
-            # If adapters keep OCR boxes after pm_blocks, we can estimate as max(0, len(page_blocks) - len(pm_blocks)).
-            # Without exact split, leave ocr_boxes as 0 and improve later if needed.
             annotated = annotate_blocks(img, page_blocks, page_rect)
 
             buf = io.BytesIO()
-            annotated.save(buf, format="PNG")
+            annotated.save(buf, format="PNG", optimize=True)
             b64 = base64.b64encode(buf.getvalue()).decode("ascii")
             annotated_images.append(f"data:image/png;base64,{b64}")
 
         warn_confidence = None
         if not fitz_ok:
-            # degrade confidence if running in fallback
             warn_confidence = 0.2
+            
         meta = ModelMeta(
             time_ms=round(elapsed_ms, 2),
             block_count=total_blocks,
@@ -115,14 +110,22 @@ async def extract(
             confidence=warn_confidence,
         )
 
-        outputs[model_name] = ModelOutput(
+        return model_name, ModelOutput(
             text_markdown=text_md,
             annotated_images=annotated_images,
             meta=meta,
         )
 
+    # Process all models in parallel using ThreadPoolExecutor
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor(max_workers=len(selection)) as executor:
+        futures = [loop.run_in_executor(executor, process_model, model_name) for model_name in selection]
+        results = await asyncio.gather(*futures)
+        
+    for model_name, output in results:
+        outputs[model_name] = output
+
     if not fitz_ok:
-        # Attach a pseudo-model with diagnostic info maybe or include warning header
-        # Simpler: add a warning field via HTTP header? For now embed first model meta text preface.
         pass
+        
     return ExtractResponse(pages=pages_to_process, models=outputs)

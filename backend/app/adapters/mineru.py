@@ -1,19 +1,19 @@
 from __future__ import annotations
 from typing import Dict, List, Tuple
 try:
-    import fitz  # type: ignore
+    import fitz
 except Exception:
-    fitz = None  # type: ignore
+    fitz = None
 
 from .base import BaseAdapter, BlocksByPage
-from ..utils.pdf import render_page_image, have_fitz
+from ..utils.pdf import have_fitz
 
 
 class MinerUAdapter(BaseAdapter):
     name = "mineru"
 
     def extract(self, doc, max_pages: int = None) -> Tuple[str, BlocksByPage]:
-        """Fast extraction with table detection."""
+        """Ultra-fast: minimal processing."""
         pages = len(doc) if max_pages is None else min(len(doc), max_pages)
         md_parts: List[str] = []
         blocks: BlocksByPage = {}
@@ -23,20 +23,10 @@ class MinerUAdapter(BaseAdapter):
             if use_real:
                 page = doc[i]
                 text = page.get_text("text")
-                raw_blocks = page.get_text("blocks")
-                page_blocks = [tuple(b[:4]) for b in raw_blocks]
-                
-                page_md = f"# Page {i+1} (MinerU)\n\n"
-                if text.strip():
-                    page_md += text + "\n\n"
-                else:
-                    page_md += "*[Empty page]*\n\n"
-                
-                blocks[i] = page_blocks
+                blocks[i] = [tuple(b[:4]) for b in page.get_text("blocks")]
+                md_parts.append(f"# Page {i+1} (MinerU)\n\n{text}\n\n")
             else:
-                page_md = f"# Page {i+1} (MinerU) - Fallback\n\nPlaceholder."
                 blocks[i] = []
-            
-            md_parts.append(page_md)
+                md_parts.append(f"# Page {i+1} (MinerU)\n\nFallback.")
         
         return "\n\n".join(md_parts), blocks

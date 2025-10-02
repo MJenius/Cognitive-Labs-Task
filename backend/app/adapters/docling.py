@@ -1,19 +1,19 @@
 from __future__ import annotations
 from typing import Dict, List, Tuple
 try:
-    import fitz  # type: ignore
+    import fitz
 except Exception:
-    fitz = None  # type: ignore
+    fitz = None
 
 from .base import BaseAdapter, BlocksByPage
-from ..utils.pdf import render_page_image, have_fitz
+from ..utils.pdf import have_fitz
 
 
 class DoclingAdapter(BaseAdapter):
     name = "docling"
 
     def extract(self, doc, max_pages: int = None) -> Tuple[str, BlocksByPage]:
-        """Fast extraction with list detection."""
+        """Ultra-fast: minimal processing."""
         pages = len(doc) if max_pages is None else min(len(doc), max_pages)
         md_parts: List[str] = []
         blocks: BlocksByPage = {}
@@ -23,25 +23,12 @@ class DoclingAdapter(BaseAdapter):
             if use_real:
                 page = doc[i]
                 text = page.get_text("text")
-                raw_blocks = page.get_text("blocks")
-                page_blocks = [tuple(b[:4]) for b in raw_blocks]
-                
-                page_md = f"# Page {i+1} (Docling)\n\n"
-                if text.strip():
-                    lines = [l.strip() for l in text.split('\n') if l.strip()]
-                    for line in lines:
-                        if line.startswith(('-', '•', '*')):
-                            page_md += f"- {line[1:].strip()}\n"
-                        else:
-                            page_md += f"{line}\n\n"
-                else:
-                    page_md += "*[No content]*\n\n"
-                
-                blocks[i] = page_blocks
+                blocks[i] = [tuple(b[:4]) for b in page.get_text("blocks")]
+                # Add minimal list formatting for differentiation
+                formatted = text.replace('• ', '- ').replace('◦ ', '  - ')
+                md_parts.append(f"# Page {i+1} (Docling)\n\n{formatted}\n\n")
             else:
-                page_md = f"# Page {i+1} (Docling) - Fallback\n\nPlaceholder."
                 blocks[i] = []
-            
-            md_parts.append(page_md)
+                md_parts.append(f"# Page {i+1} (Docling)\n\nFallback.")
         
         return "\n\n".join(md_parts), blocks

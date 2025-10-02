@@ -162,15 +162,6 @@ export default function HomePage() {
     });
   };
 
-  const simulateProgress = (fileId: string) => {
-    let pct = 0;
-    const interval = setInterval(() => {
-      pct = Math.min(95, pct + 5 + Math.random()*8);
-      setFiles(prev => prev.map(f => f.id === fileId ? { ...f, progress: pct } : f));
-    }, 350);
-    return interval;
-  };
-
   // Replace the processSingleFile and extractAllPending functions with these improved versions:
 
 const processSingleFile = async (fileId: string) => {
