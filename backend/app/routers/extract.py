@@ -86,7 +86,7 @@ async def extract(
         total_blocks = 0
         ocr_boxes = 0
         for i in range(start_idx, start_idx + pages_to_process):
-            img = render_page_image(doc, i, dpi=144)
+            img = render_page_image(doc, i, dpi=96)
             page_rect = (doc[i].rect.width, doc[i].rect.height)
             page_blocks = blocks_by_page.get(i, [])
             total_blocks += len(page_blocks)

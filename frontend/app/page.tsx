@@ -171,14 +171,99 @@ export default function HomePage() {
     return interval;
   };
 
-  const processSingleFile = async (fileId: string) => {
-    const fState = files.find(f => f.id === fileId);
-    if (!fState) return;
+  // Replace the processSingleFile and extractAllPending functions with these improved versions:
+
+const processSingleFile = async (fileId: string) => {
+  const fState = files.find(f => f.id === fileId);
+  if (!fState) return;
+  const { selectedModels, pageStart, pageEnd } = fState.settings;
+  if (!selectedModels.length) return;
+  
+  setLoading(true);
+  setGlobalError(null);
+  setFiles(prev => prev.map(fs => fs.id === fileId ? { 
+    ...fs, 
+    status: 'uploading', 
+    error: null, 
+    progress: 10 
+  } : fs));
+
+  try {
+    const form = new FormData();
+    form.append('file', fState.file);
+    form.append('models', selectedModels.join(','));
+    const ps = parseInt(pageStart, 10);
+    const pe = parseInt(pageEnd, 10);
+    if (!isNaN(ps)) form.append('page_start', String(ps));
+    if (!isNaN(pe)) form.append('page_end', String(pe));
+    
+    console.log('Starting extraction:', {
+    fileId,
+    fileName: fState.file.name,
+    fileSize: fState.file.size,
+    selectedModels,
+    pageRange: `${pageStart || '1'} to ${pageEnd || 'end'}`
+    });
+    // Update progress during upload
+    setFiles(prev => prev.map(fs => fs.id === fileId ? { ...fs, progress: 30 } : fs));
+    
+    const res = await fetch(`${BACKEND_URL}/api/extract`, { 
+      method: 'POST', 
+      body: form 
+    });
+    
+    // Update progress after upload completes
+    setFiles(prev => prev.map(fs => fs.id === fileId ? { ...fs, progress: 60 } : fs));
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`Request failed (${res.status}): ${errorText}`);
+    }
+    
+    const data: ExtractResponse = await res.json();
+    
+    setFiles(prev => prev.map(fs => fs.id === fileId ? { 
+      ...fs, 
+      status: 'done', 
+      result: data, 
+      progress: 100 
+    } : fs));
+    
+    if (!activeFileId) setActiveFileId(fState.id);
+    
+  } catch (err: any) {
+    const msg = err?.message || 'Upload failed';
+    console.error('Extraction error:', err);
+    setFiles(prev => prev.map(fs => fs.id === fileId ? { 
+      ...fs, 
+      status: 'error', 
+      error: msg, 
+      progress: 0 
+    } : fs));
+    setGlobalError(msg);
+  } finally {
+    setLoading(false);
+  }
+};
+
+const extractAllPending = async () => {
+  if (!files.length) return;
+  setLoading(true);
+  setGlobalError(null);
+  
+  for (let i = 0; i < files.length; i++) {
+    const fState = files[i];
+    if (fState.status === 'uploading' || fState.status === 'done') continue;
     const { selectedModels, pageStart, pageEnd } = fState.settings;
-    if (!selectedModels.length) return;
-    setLoading(true);
-    setFiles(prev => prev.map(fs => fs.id === fileId ? { ...fs, status: 'uploading', error: null, progress: 5 } : fs));
-    const interval = simulateProgress(fileId);
+    if (!selectedModels.length) continue;
+    
+    setFiles(prev => prev.map(fs => fs.id === fState.id ? { 
+      ...fs, 
+      status: 'uploading', 
+      error: null, 
+      progress: 10 
+    } : fs));
+
     try {
       const form = new FormData();
       form.append('file', fState.file);
@@ -187,55 +272,47 @@ export default function HomePage() {
       const pe = parseInt(pageEnd, 10);
       if (!isNaN(ps)) form.append('page_start', String(ps));
       if (!isNaN(pe)) form.append('page_end', String(pe));
-      const res = await fetch(`${BACKEND_URL}/api/extract`, { method: 'POST', body: form });
-      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      
+      setFiles(prev => prev.map(fs => fs.id === fState.id ? { ...fs, progress: 30 } : fs));
+      
+      const res = await fetch(`${BACKEND_URL}/api/extract`, { 
+        method: 'POST', 
+        body: form 
+      });
+      
+      setFiles(prev => prev.map(fs => fs.id === fState.id ? { ...fs, progress: 60 } : fs));
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Request failed (${res.status}): ${errorText}`);
+      }
+      
       const data: ExtractResponse = await res.json();
-      setFiles(prev => prev.map(fs => fs.id === fileId ? { ...fs, status: 'done', result: data, progress: 100 } : fs));
+      
+      setFiles(prev => prev.map(fs => fs.id === fState.id ? { 
+        ...fs, 
+        status: 'done', 
+        result: data, 
+        progress: 100 
+      } : fs));
+      
       if (!activeFileId) setActiveFileId(fState.id);
+      
     } catch (err: any) {
       const msg = err?.message || 'Upload failed';
-      setFiles(prev => prev.map(fs => fs.id === fileId ? { ...fs, status: 'error', error: msg, progress: 0 } : fs));
+      console.error('Extraction error:', err);
+      setFiles(prev => prev.map(fs => fs.id === fState.id ? { 
+        ...fs, 
+        status: 'error', 
+        error: msg, 
+        progress: 0 
+      } : fs));
       setGlobalError(msg);
-    } finally {
-      clearInterval(interval);
     }
-    setLoading(false);
-  };
-
-  const extractAllPending = async () => {
-    if (!files.length) return;
-    setLoading(true);
-    setGlobalError(null);
-    for (let i = 0; i < files.length; i++) {
-      const fState = files[i];
-      if (fState.status === 'uploading') continue;
-      const { selectedModels, pageStart, pageEnd } = fState.settings;
-      if (!selectedModels.length) continue; // skip if user deselected all
-      setFiles(prev => prev.map(fs => fs.id === fState.id ? { ...fs, status: 'uploading', error: null, progress: 5 } : fs));
-      const interval = simulateProgress(fState.id);
-      try {
-        const form = new FormData();
-        form.append('file', fState.file);
-        form.append('models', selectedModels.join(','));
-        const ps = parseInt(pageStart, 10);
-        const pe = parseInt(pageEnd, 10);
-        if (!isNaN(ps)) form.append('page_start', String(ps));
-        if (!isNaN(pe)) form.append('page_end', String(pe));
-        const res = await fetch(`${BACKEND_URL}/api/extract`, { method: 'POST', body: form });
-        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-        const data: ExtractResponse = await res.json();
-        setFiles(prev => prev.map(fs => fs.id === fState.id ? { ...fs, status: 'done', result: data, progress: 100 } : fs));
-        if (!activeFileId) setActiveFileId(fState.id);
-      } catch (err: any) {
-        const msg = err?.message || 'Upload failed';
-        setFiles(prev => prev.map(fs => fs.id === fState.id ? { ...fs, status: 'error', error: msg, progress: 0 } : fs));
-        setGlobalError(msg);
-      } finally {
-        clearInterval(interval);
-      }
-    }
-    setLoading(false);
-  };
+  }
+  
+  setLoading(false);
+};
 
   const removeFile = (id: string) => {
     setFiles(prev => prev.filter(f => f.id !== id));
